@@ -218,7 +218,7 @@ Panel {
   }
 
   function download(item, applyTo) {
-    if (!item.remote || downloading[item.id] || localById[item.id]) return
+    if (!item || !item.id || !item.remote || downloading[item.id] || localById[item.id]) return
     var d = Object.assign({}, downloading)
     d[item.id] = true
     downloading = d
@@ -678,7 +678,9 @@ Panel {
 
             delegate: Tile {
               required property var model
-              item: model.modelData !== undefined ? model.modelData : root.toItem(model)
+              // ListModel rows (online) carry a `wid` role; downloaded items are
+              // plain objects. Qt 6 exposes `modelData` for both, so test the role.
+              item: model.wid !== undefined ? root.toItem(model) : model.modelData
               width: grid.cellWidth
               height: grid.cellHeight
             }
