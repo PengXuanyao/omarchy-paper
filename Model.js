@@ -7,6 +7,20 @@ function screenOrientation(screen) {
   return screen.height > screen.width ? "portrait" : "landscape"
 }
 
+// hyprctl monitors -j -> { name: { w, h } } with 90/270° rotations applied
+function parseMonitors(text) {
+  var out = {}
+  try {
+    var list = JSON.parse(text || "[]")
+    for (var i = 0; i < list.length; i++) {
+      var m = list[i]
+      var rotated = (Number(m.transform) || 0) % 2 === 1
+      out[m.name] = rotated ? { w: m.height, h: m.width } : { w: m.width, h: m.height }
+    }
+  } catch (e) {}
+  return out
+}
+
 function physicalSize(screen) {
   if (!screen) return { w: 1920, h: 1080 }
   var dpr = screen.devicePixelRatio || 1

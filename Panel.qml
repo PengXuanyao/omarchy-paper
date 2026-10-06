@@ -31,6 +31,25 @@ Panel {
   readonly property var targetScreen: screenByName(targetName) || barScreen
   readonly property string targetOrientation: Model.screenOrientation(targetScreen)
 
+  // Native pixel size per monitor (rotation applied), from Hyprland. Qt's
+  // devicePixelRatio rounds fractional scales up (1.25 -> 2), so it can't be
+  // used to recover the real resolution.
+  property var monitorSizes: ({})
+
+  function sizeOf(screen) {
+    var known = screen ? monitorSizes[screen.name] : null
+    return known || Model.physicalSize(screen)
+  }
+
+  Process {
+    id: monitorsProc
+    running: true
+    command: ["hyprctl", "monitors", "-j"]
+    stdout: StdioCollector {
+      onStreamFinished: root.monitorSizes = Model.parseMonitors(text)
+    }
+  }
+
   function screenByName(name) {
     var list = Quickshell.screens
     for (var i = 0; i < list.length; i++) if (list[i].name === name) return list[i]
@@ -88,7 +107,7 @@ Panel {
 
   function fetchMore() {
     if (loading || tab === "downloaded" || page >= lastPage) return
-    var size = Model.physicalSize(targetScreen)
+    var size = root.sizeOf(targetScreen)
     var atleast = orientation === "portrait"
       ? Math.min(size.w, size.h) + "x" + Math.max(size.w, size.h)
       : (orientation === "landscape" ? Math.max(size.w, size.h) + "x" + Math.min(size.w, size.h) : "")
@@ -342,6 +361,7 @@ Panel {
   // ---------------------------------------------------------------- lifecycle
   onOpenedChanged: if (opened) {
     if (targetName === "" && barScreen) targetName = barScreen.name
+    if (!monitorsProc.running) monitorsProc.running = true
     overridesFile.reload()
     if (!globalProc.running) globalProc.running = true
     scanLocal()
@@ -371,7 +391,7 @@ Panel {
     var screen = screenByName(screenName) || barScreen
     if (!screen) return
     var o = Model.screenOrientation(screen)
-    var size = Model.physicalSize(screen)
+    var size = root.sizeOf(screen)
     var url = Model.searchUrl({
       sorting: "random",
       categories: setting("categories", "100"),
@@ -480,7 +500,7 @@ Panel {
             }
             Text {
               text: root.targetScreen
-                ? root.targetScreen.name + " · " + Model.physicalSize(root.targetScreen).w + "×" + Model.physicalSize(root.targetScreen).h + " · " + root.targetOrientation
+                ? root.targetScreen.name + " · " + root.sizeOf(root.targetScreen).w + "×" + root.sizeOf(root.targetScreen).h + " · " + root.targetOrientation
                 : ""
               color: root.dim
               font.family: root.fontFamily
