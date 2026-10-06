@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 1,
+  "id": "xuanyao.paper",
+  "name": "Paper",
+  "version": "1.0.0",
+  "author": "xuanyao",
+  "description": "Pap.er-style wallpaper browser with per-monitor wallpapers",
+  "kinds": [
+    "service",
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "service": "Background.qml",
+    "barWidget": "Panel.qml"
+  },
+  "barWidget": {
+    "displayName": "Paper",
+    "description": "Browse Wallhaven wallpapers and set one per monitor. Click the icon on a monitor's bar to target that monitor.",
+    "category": "Desktop",
+    "allowMultiple": false,
+    "defaultSection": "right",
+    "defaults": {
+      "downloadDir": "~/Pictures/Wallpapers/Paper",
+      "categories": "100",
+      "topRange": "1M"
+    },
+    "schema": [
+      {
+        "key": "downloadDir",
+        "type": "string",
+        "label": "Download folder"
+      },
+      {
+        "key": "categories",
+        "type": "string",
+        "label": "Wallhaven categories (general/anime/people bits, e.g. 100)"
+      },
+      {
+        "key": "topRange",
+        "type": "string",
+        "label": "Toplist range (1d, 3d, 1w, 1M, 3M, 6M, 1y)"
+      }
+    ]
+  },
+  "omarchy": {
+    "clonedFrom": "omarchy.background"
+  },
+  "license": "MIT"
+}
