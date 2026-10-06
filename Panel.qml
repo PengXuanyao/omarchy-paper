@@ -64,7 +64,9 @@ Panel {
   readonly property string orientation: orientationMode === "fit" ? targetOrientation : orientationMode
 
   // ---- remote results
-  property var remoteItems: []
+  // Appended page by page; replacing a JS-array model would reset the grid's
+  // scroll position every time the next page loads.
+  ListModel { id: remoteModel }
   property int page: 0
   property int lastPage: 1
   property string seed: ""
@@ -80,7 +82,14 @@ Panel {
     return map
   }
   readonly property var visibleLocal: localItems.filter(function(it) { return Model.matchesOrientation(it, root.orientation) })
-  readonly property var gridItems: tab === "downloaded" ? visibleLocal : remoteItems
+  readonly property int gridCount: tab === "downloaded" ? visibleLocal.length : remoteModel.count
+
+  function toItem(m) {
+    return {
+      id: m.wid, remote: m.remote, thumb: m.thumb, full: m.full, page: m.page,
+      width: m.w, height: m.h, orientation: m.orientation, path: m.path
+    }
+  }
 
   // ---- per-screen state
   property var overrides: ({})
@@ -94,7 +103,8 @@ Panel {
 
   // ---------------------------------------------------------------- remote
   function resetAndFetch() {
-    remoteItems = []
+    remoteModel.clear()
+    if (grid) grid.contentY = 0
     page = 0
     lastPage = 1
     seed = ""
@@ -135,11 +145,17 @@ Panel {
       try {
         var data = JSON.parse(xhr.responseText)
         var mapped = (data.data || []).map(Model.mapWallhaven)
-        root.remoteItems = root.remoteItems.concat(mapped)
+        for (var i = 0; i < mapped.length; i++) {
+          var it = mapped[i]
+          remoteModel.append({
+            wid: it.id, remote: true, thumb: it.thumb, full: it.full, page: it.page,
+            w: it.width, h: it.height, orientation: it.orientation, path: ""
+          })
+        }
         root.page = data.meta ? data.meta.current_page : root.page + 1
         root.lastPage = data.meta ? data.meta.last_page : root.page
         if (data.meta && data.meta.seed) root.seed = data.meta.seed
-        if (root.remoteItems.length === 0) root.errorText = "Nothing found."
+        if (remoteModel.count === 0) root.errorText = "Nothing found."
       } catch (e) {
         root.errorText = "Unexpected response from Wallhaven."
       }
@@ -164,7 +180,7 @@ Panel {
       "done", "_", root.downloadDir]
     stdout: StdioCollector {
       onStreamFinished: {
-        root.localItems = Model.parseLocal(text)
+        root.setLocalItems(Model.parseLocal(text))
         if (root.pendingLocalChange) {
           root.pendingLocalChange = false
           root.applyRandomLocal()
@@ -214,10 +230,20 @@ Panel {
     })
   }
 
+  // The downloaded list is a JS array model, so replacing it resets the grid;
+  // keep the scroll position when it changes under the user.
+  function setLocalItems(items) {
+    var y = grid ? grid.contentY : 0
+    localItems = items
+    if (grid && tab === "downloaded") Qt.callLater(function() {
+      grid.contentY = Math.min(y, Math.max(0, grid.contentHeight - grid.height))
+    })
+  }
+
   function deleteLocal(item) {
     if (!item.path) return
     Quickshell.execDetached(["rm", "-f", "--", item.path])
-    localItems = localItems.filter(function(it) { return it.path !== item.path })
+    setLocalItems(localItems.filter(function(it) { return it.path !== item.path }))
     statusText = "Deleted"
   }
 
@@ -238,7 +264,7 @@ Panel {
         root.downloading = d
         if (code === 0) {
           var local = Object.assign({}, job.item, { remote: false, path: job.dest, thumb: "file://" + job.dest })
-          root.localItems = [local].concat(root.localItems.filter(function(it) { return it.id !== local.id }))
+          root.setLocalItems([local].concat(root.localItems.filter(function(it) { return it.id !== local.id })))
           root.statusText = "Saved to " + root.downloadDir.replace(root.home, "~")
           for (var i = 0; i < job.applyTo.length; i++) root.applyPath(job.dest, job.applyTo[i])
         } else {
@@ -365,7 +391,7 @@ Panel {
     overridesFile.reload()
     if (!globalProc.running) globalProc.running = true
     scanLocal()
-    if (remoteItems.length === 0 && tab !== "downloaded") resetAndFetch()
+    if (remoteModel.count === 0 && tab !== "downloaded") resetAndFetch()
     Qt.callLater(function() { keyCatcher.forceActiveFocus() })
   } else {
     statusText = ""
@@ -637,7 +663,8 @@ Panel {
             id: grid
             anchors.fill: parent
             clip: true
-            model: root.gridItems
+            model: root.tab === "downloaded" ? root.visibleLocal : remoteModel
+
             boundsBehavior: Flickable.StopAtBounds
             readonly property int columns: root.orientation === "portrait" ? 5 : 3
             readonly property real tileRatio: root.orientation === "portrait" ? 16 / 9 : (root.orientation === "landscape" ? 9 / 16 : 1)
@@ -650,8 +677,8 @@ Panel {
             onContentHeightChanged: if (contentHeight <= height && root.tab !== "downloaded") Qt.callLater(root.fetchMore)
 
             delegate: Tile {
-              required property var modelData
-              item: modelData
+              required property var model
+              item: model.modelData !== undefined ? model.modelData : root.toItem(model)
               width: grid.cellWidth
               height: grid.cellHeight
             }
@@ -675,7 +702,7 @@ Panel {
             width: parent.width * 0.8
             horizontalAlignment: Text.AlignHCenter
             wrapMode: Text.WordWrap
-            visible: !root.loading && root.gridItems.length === 0
+            visible: !root.loading && root.gridCount === 0
             text: root.errorText !== "" ? root.errorText
               : root.tab === "search" ? "Type a search and press Enter."
               : root.tab === "downloaded" ? (root.localItems.length === 0 ? "Nothing downloaded yet." : "No " + root.orientation + " wallpapers downloaded.")
